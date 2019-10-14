@@ -2,46 +2,89 @@
 //                           Global Stuff
 //------------------------------------------------------------------------
 #define NELEMS(x)  (sizeof(x) / sizeof((x)[0])) //Determines number of elements
-char des=0;//if decision is made, sets to 1,
+char des=-1;//if decision is made, sets to 1,
+char Incoming_value=0; //BT set
+  
 char* option; //final destination
 char* drvr; //final driver
-struct food
+
+struct foodPlace
 {
-  unsigned d : 1;  // delivery
-  unsigned r : 1;  // restaraunt
-  unsigned f : 1;  // fast food
-  unsigned b : 1;  // breakfast
+  char pName[20];
+  unsigned incl : 1;
+  unsigned type : 5;  //5 types: deliv, sit-in, carry-out,fast food, breakfast
+  struct foodPlace *next;
+  struct foodPlace *prev;
 };
 
+struct driver
+{
+  char dName[20];
+};
+
+struct queue
+{
+  struct foodPlace *head; //head of the queue
+  int count; //number of elements
+};
+
+//reads in data initially below
+//stores info in queue
+//uploads queue info to app.
+//app sets incl to 0 if unwanted
+
+const byte intPin=3;
+//------------------------------------------------------------------------
+//                           PROGRMEM Variables
+//------------------------------------------------------------------------
+const char string_0[] PROGMEM = "IHOP";
+const char string_1[] PROGMEM = "Bob Evans";
+const char string_2[] PROGMEM = "Sheetz";
+const char string_3[] PROGMEM = "McDonalds";
+const char string_4[] PROGMEM = "Shoney's";
+const char string_5[] PROGMEM = "Five Guys";
+const char string_6[] PROGMEM = "Wendy's";
+const char string_7[] PROGMEM = "Arby's";
+const char string_8[] PROGMEM = "Panda Express";
+const char string_9[] PROGMEM = "Subway";
+const char string_10[] PROGMEM = "Popeyes";
+const char string_11[] PROGMEM = "Long John Silvers";
+const char string_12[] PROGMEM = "Taco Bell";
+const char string_13[] PROGMEM = "Chipotle";
+const char string_14[] PROGMEM = "Applebee's";
+const char string_15[] PROGMEM = "Chili's";
+const char string_16[] PROGMEM = "Primanti's";
+const char string_17[] PROGMEM = "Buffalo Wild Wings";
+const char string_18[] PROGMEM = "Outback";
+const char string_19[] PROGMEM = "Ogawa";
+const char string_20[] PROGMEM = "No 1 Super Buffet";
+const char string_21[] PROGMEM = "FRESH MINT";
+const char string_22[] PROGMEM = "Ruby Tuesday";
+const char string_23[] PROGMEM = "Black Bear";
+const char string_24[] PROGMEM = "Fusion";
+const char string_25[] PROGMEM = "China King";
+const char string_26[] PROGMEM = "Pizza Hut";
+const char string_27[] PROGMEM = "Papa Johns";
+const char string_28[] PROGMEM = "Chaang";
+const char string_29[] PROGMEM =  "D.P. Doughs";
+const char string_30[] PROGMEM = "Casa D'Amici";
+const char string_31[] PROGMEM = "Clutch Wing Shop";
+const char *const string_table[] PROGMEM = {string_0, string_1, string_2, 
+string_3, string_4, string_5, string_6, string_7, string_8, string_9, string_10,
+string_11, string_12, string_13,string_14, string_15, string_16, string_17,
+string_18, string_19, string_21, string_22, string_23,string_24, string_25,
+string_26, string_27, string_28, string_29, string_30, string_31};
+const uint16_t btype[] PROGMEM={0b00001,0b00001,0b00011,0b00011,0b00001,0b00010,
+0b00010,0b00010,0b00110,0b00010,0b0010,0b0010,0b0110,0b0110,0b01000,
+0b01000,0b01000,0b11100,0b01100,0b01000,0b01000,0b01000,0b01000,0b01000,
+0b01000,0b10100,0b10100,0b10100,0b11100,0b10100,0b10100,0b11100};
 
 //------------------------------------------------------------------------
-//                           List of Options
+//                           begins
 //------------------------------------------------------------------------
-char brkfast[5][20]={"IHOP","Bob Evans","Sheetz","McDonalds","Shoney's"};
-char bNum=NELEMS(brkfast);
-//priority based?
-
-char fast[11][20]={"McDonalds","Five Guys","Sheetz",
-"Wendy's","Arby's","Panda Express","Subway","Popeyes",
-"Long John Silvers","Taco Bell","Chipotle"}; //repeats Sheetz and McDonalds
-char fNum=NELEMS(fast);
-
-char rest[11][20]={"Applebee's","Chili's","Primanti's",
-"Buffalo Wild Wings","Outback","Ogawa","No 1 Super Buffet",
-"FRESH MINT","Ruby Tuesday","Black Bear","Fusion"};
-char rNum=NELEMS(rest);
-
-char deliv[7][20]={"China King","Pizza Hut","Papa Johns",
-"Chaang", "D.P. Doughs","Casa D'Amici","Clutch Wing Shop"};
-char dNum=NELEMS(deliv);
-
-//------------------------------------------------------------------------
-//                           Driver Options
-//------------------------------------------------------------------------
-char driver[3][10]={"Larry","Syd","Toast"};
-char driv=NELEMS(driver);
-
-
+void begins(){
+  des=0;
+}
 
 //------------------------------------------------------------------------
 //                           Setup
@@ -49,118 +92,127 @@ char driv=NELEMS(driver);
 void setup() {
   pinMode(7,OUTPUT); //keeps Arduino on
   digitalWrite(7,HIGH);
-  
-  randomSeed(analogRead(0));//INCREASE THE RANDOMNESS
-  
-  pinMode(3, INPUT);//breakfast
-  pinMode(4, INPUT);//fastfood
-  pinMode(5, INPUT);//restaraunt
-  pinMode(6, INPUT);//delivery
-  pinMode(7,OUTPUT);
-  digitalWrite(7,HIGH);
+  Serial.begin(9600);
+  pinMode(intPin, INPUT_PULLUP); //interruptPin
+  attachInterrupt(digitalPinToInterrupt(intPin),begins,CHANGE);
   pinMode(13,OUTPUT);//LED for error
+
+  randomSeed(analogRead(0));//Random Setup
 }
 
 //------------------------------------------------------------------------
 //                           Loop
 //------------------------------------------------------------------------
+struct queue *items=NULL;
 void loop() {
   int rando=-1; //random number to generate option
-  struct food bitters;
-  
-  
+  if(isEmpty(items))
+    items=createQueue();
+  while(des<0)
+  {
+    poll();
+  }
 //------------------------------------------------------------------------
-//                           Decision Process
+//                           Randomize Process
 //------------------------------------------------------------------------
   
   if(!des){
-    char maxPlace=-1; //number of places to choose from
-    bitters=food{0,0,0,0};
-    if(digitalRead(3)) bitters.b=1;
-    if(digitalRead(4)) bitters.f=1;
-    if(digitalRead(5)) bitters.r=1;
-    if(digitalRead(6)) bitters.d=1;
-
-    //Testing
-      bitters.b=1;
-      bitters.f=1;
-      bitters.d=1;
-      bitters.r=1;
-    //Testing
     
-    maxPlace=(bitters.b)+2*(bitters.f)+4*(bitters.r)+8*(bitters.d);
-    if(maxPlace>0){
-        rando=7;
-        des=1;
-    }
-    else{ //parameters fail, reset and try again
-        for(char i=0;i<10;i++){
-          digitalWrite(13,HIGH);
-          delay(1000);
-          digitalWrite(13,LOW);
-          delay(1000);
-          exit(1);
-        }
-    }
+    des++;
   }
 //------------------------------------------------------------------------
 //                           Output Process
 //------------------------------------------------------------------------
   if(des==1){
-    option = optionList(rando,bitters);
-    if(!((bitters.d)&&(rando>((bNum*bitters.b)+(fNum*bitters.f)+(rNum*bitters.r)))))
-      drvr=*(driver+random(0,driv));
     outputVisual(option);
     outputAudio(option);
   }
   shutdownTimer();
 }
-
+//------------------------------------------------------------------------
+//                           poll
+//------------------------------------------------------------------------
+void poll(){
+  if(Serial.available() > 0)
+  {
+    Incoming_value = Serial.read();      //Read the incoming data and store it into variable Incoming_value
+    Serial.println(Incoming_value);
+  }     
+}
+//------------------------------------------------------------------------
+//                           isEmpty
+//------------------------------------------------------------------------
+int isEmpty(struct queue *items){ //returns 1 if empty
+  if(items==NULL)
+    return 1;
+  if(items->count==0)
+    return 1;
+  return 0;
+}
+//------------------------------------------------------------------------
+//                           createQueue
+//------------------------------------------------------------------------
+struct queue* createQueue(){
+  struct queue *items=(struct queue*)malloc(sizeof(struct queue));
+  items->head=NULL;
+  items->count=0;
+  return items;
+}
+//------------------------------------------------------------------------
+//                           addPlace
+//------------------------------------------------------------------------
+//desc will be between 1 and 15,
+//n will be a name of a restaraunt
+int addPlace(char n[20],int desc){ //returns 0 if failure
+  struct foodPlace *place=(struct foodPlace*)malloc(sizeof(struct foodPlace));
+  if(place)
+  {
+    return 0;
+  }
+  if(items->head==NULL){
+    items->head=place;
+    items->count++;
+  }
+  else{
+    struct foodPlace *temp= items->head;
+    while(temp->next) temp=temp->next;
+    temp->next=place;
+    items->count++;
+  }
+  return 1;
+}
+//------------------------------------------------------------------------
+//                           removePlace
+//------------------------------------------------------------------------
+int removePlace(struct foodPlace *place){ //returns 0 if failure
+  if(place)
+  {
+    return 0;
+  }
+  if(items->head==NULL){
+    items->head=place;
+    items->count++;
+  }
+  else{
+    struct foodPlace *temp= items->head;
+    while(temp->next) temp=temp->next;
+    temp->next=place;
+    items->count++;
+  }
+  return 1;
+}
 //------------------------------------------------------------------------
 //                           Randomizer
 //------------------------------------------------------------------------
-int randoThing(struct food &bitten){
-  char var=(bNum*bitten.b)+(fNum*bitten.f)+(rNum*bitten.r)+(dNum*bitten.d); 
-  if(bitten.b && bitten.f) var-2;
-  return random(1,var);
+int randoThing(){
+  return random(1,(items->count)+1);
 }
-
 //------------------------------------------------------------------------
 //                           Picks Place
 //------------------------------------------------------------------------
 char* optionList(int rando, struct food &bitr)
 {
-  char rav=0;
-  char var=(bNum*bitr.b)+(fNum*bitr.f)+(rNum*bitr.r)+(dNum*bitr.d); 
-  char *place;
-  if(bitr.b && bitr.f)
-  {
-    if(rando>7) rav+=2; //hardcoded McD skip FIX
-    else if(rando>5) rav++; //hardcoded Sheetz skip FIX
-  }
   
-  if((bitr.d)&&(rando>(var-dNum*bitr.d)))
-  {
-    rav+=rando-((bNum*bitr.b)+(fNum*bitr.f)+(rNum*bitr.r))-1;  
-    place=*(deliv+rav);
-  }
-  else if((bitr.r)&&(rando>(var-((rNum*bitr.r)+(dNum*bitr.d)))))
-  {
-    rav+=rando-((bNum*bitr.b)+(fNum*bitr.f))-1;
-    place=*(rest+rav);
-  }
-  else if((bitr.f)&&(rando>(var-((fNum*bitr.f)+(rNum*bitr.r)+(dNum*bitr.d)))))
-  {
-    rav+=rando-(bNum*bitr.b)-1;
-    place=*(fast+rav);
-  }
-  else 
-  {
-    rav+=rando-1;
-    place=*(brkfast+rav);
-  }
-  
-  return place;
 }
 //------------------------------------------------------------------------
 //                           Outputs Visual
@@ -184,12 +236,3 @@ void shutdownTimer()
 {
   //purchase shutdown components
 }
-//------------------------------------------------------------------------
-//                           Add Function
-//------------------------------------------------------------------------
-
-//communicate via serial
-//switch must be set to access, if set, permanently rewrites function variables
-//wait for feedback
-//display current options
-//allow user to input/edit/delete options freely
